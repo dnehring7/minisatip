@@ -21,6 +21,7 @@
 #include "adapter.h"
 #include "api/symbols.h"
 #include "api/variables.h"
+#include "clean_psi.h"
 #include "dvb.h"
 #include "minisatip.h"
 #include "pmt.h"
@@ -318,6 +319,7 @@ int start_play(streams *sid, sockets *s) {
     if (pids_empty_or_zero)
         s->flush_enqued_data = 1;
     sid->do_play = 1;
+    sid->clean_since = 0; // --clean-psi: new pids, re-arm the PMT window
     if (s->type != TYPE_HTTP)
         sid->start_streaming = 0;
 
@@ -620,6 +622,7 @@ int streams_add() {
     /* coverity[DC.WEAK_CRYPTO] */
     ss->ssrc = random();
     ss->timeout = opts.timeout_sec;
+    ss->clean_since = 0;
     ss->wtime = ss->rtcp_wtime = getTick();
 
     return i;
@@ -1077,6 +1080,9 @@ int process_packets_for_stream(streams *sid, adapter *ad) {
         max_pack = 0;
     }
 
+    int clean_n = pmt_clean_packets(ad), clean_pos = 0;
+    int in_grace = pmt_clean_window(sid, rtime);
+
     for (i = 0; i < ad->rlen; i += DVB_FRAME) {
         int rtp_added = 0;
         b = ad->buf + i;
@@ -1087,6 +1093,11 @@ int process_packets_for_stream(streams *sid, adapter *ad) {
         int _pid = PID_FROM_TS(b);
         if (!pids[_pid] && !pids[8192])
             continue;
+        if (clean_n) {
+            b = pmt_clean_packet(ad, i / DVB_FRAME, b, in_grace, &clean_pos);
+            if (!b)
+                continue;
+        }
 
         if (total_len && max_pack && (total_len / DVB_FRAME % max_pack == 0)) {
             rtp_pos += enqueue_rtp_header(sid, iov, iiov, last_rtp_header,
@@ -1147,6 +1158,9 @@ int process_dmx(sockets *s) {
         s->rlen = 0;
         return 0;
     }
+#ifndef DISABLE_TABLES
+    int clean_waiting = pmt_clean_waiting(ad, s->rtime); // before ad->mutex
+#endif
     std::unique_lock<SMutex> lock(ad->mutex);
     if (!ad->enabled) {
         s->rlen = 0;
@@ -1169,6 +1183,7 @@ int process_dmx(sockets *s) {
 
 #ifndef DISABLE_TABLES
     pmt_process_stream(ad);
+    pmt_clean_prepare(ad, clean_waiting); // after the descramblers
 #endif
 
     check_cc2(ad);

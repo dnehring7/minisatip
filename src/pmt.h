@@ -162,6 +162,12 @@ typedef struct struct_pmt {
     int filter;
     int64_t start_time;
     std::unordered_map<uint64_t, int> *global_start, *local_start;
+    // --clean-psi
+    int in_clear;         // descrambled here, or it arrives so
+    int clear_run;        // clear PCR stream packets in a row
+    int clean_off;        // bytes of the rewrite emitted, -1 = not writing
+    uint8_t clean_hdr[8]; // header of the section that clean replaces
+    std::vector<uint8_t> clean; // that section without its CA descriptors
 } SPMT;
 
 // filters can be setup for specific pids and masks
