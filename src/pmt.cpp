@@ -22,6 +22,7 @@
 #include "adapter.h"
 #include "api/symbols.h"
 #include "api/variables.h"
+#include "clean_psi.h"
 #include "dvb.h"
 #include "dvbapi.h"
 #include "minisatip.h"
@@ -746,6 +747,7 @@ void update_cw(SPMT *pmt) {
             if (len && !test_decrypt_packet(cws[i], start, len)) {
                 LOGM("correct CW found (len %d): %s", len,
                      cw_to_string(cws[i], buf));
+                pmt->in_clear = 1; // descrambled, what --clean-psi waits for
                 cw = cws[i];
                 break;
             }
@@ -1545,6 +1547,9 @@ int pmt_process_stream(adapter *ad) {
         if (p && (p->filter != -1)) {
             process_filters(ad, b, p);
         }
+        // before pmt_decrypt_stream() clears the scrambling bits
+        if (opts.clean_psi && p && p->pmt >= 0)
+            pmt_clean_count_clear(ad, b, p);
         if (opts.emulate_pids_all && pid == 0) {
             p = find_pid(ad->id, 8192);
             if (p)
@@ -1606,6 +1611,8 @@ int pmt_add(int aid, int sid, int pmt_pid) {
     pmt->sdt_tsid = pmt->sdt_onid = 0;
     pmt->caids = 0;
     pmt->descriptors.clear();
+    pmt->clean.clear();
+    pmt_clean_reset(pmt);
 
     pmt->enabled = 1;
 
@@ -2129,7 +2136,7 @@ int pmt_add_stream_pid(SPMT *pmt, int pid, int type, bool is_audio,
     return pmt->stream_pids.size() - 1;
 }
 
-int process_pmt(int filter, unsigned char *b, int, void *opaque) {
+int process_pmt(int filter, unsigned char *b, int len, void *opaque) {
     int pi_len = 0, isAC3, pmt_len = 0, i, es_len, ver, pcr_pid = 0;
     unsigned char *pmt_b, *pi;
     int pid, spid, stype, sid;
@@ -2273,6 +2280,9 @@ int process_pmt(int filter, unsigned char *b, int, void *opaque) {
     if (is_pmt_subscribed(ad, pmt))
         handover_claims_from_lower_priority(ad, pmt);
 
+    if (opts.clean_psi)
+        pmt_clean_build(pmt, b, len);
+
     if (!pmt->state)
         set_filter_flags(filter, 0);
 
@@ -2343,6 +2353,7 @@ void start_pmt(SPMT *pmt) {
     pmt->state = PMT_STARTING;
     pmt->start_time = getTick();
     pmt->last_decrypt_ok = pmt->last_scrambled_pkt = 0;
+    pmt_clean_reset(pmt);
 
     // No ADD_REMOVE: the client subscription holds the pid in the demux,
     // so the last unsubscribe deletes it; the CA send follows on the pass.
