@@ -44,6 +44,8 @@ typedef struct struct_opts {
     int drop_encrypted;
     int pids_all_no_dec;
     int sdt_charset; // DVB_CHARSET_*, --sdt-charset
+    int clean_psi;
+    int clean_psi_grace;
     int rtsp_port;
     uint8_t netcv_count;
     char *netcv_if;
