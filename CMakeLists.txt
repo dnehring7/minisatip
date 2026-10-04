@@ -240,6 +240,7 @@ set(MINISATIP_SOURCES
     src/utils/uuid.cpp
     src/dvb.cpp
     src/pmt.cpp
+    src/clean_psi.cpp
     src/tables.cpp
     src/dvbapi.cpp
     src/satipc.cpp
@@ -334,6 +335,7 @@ if(BUILD_TESTING)
         tests/test_ca.cpp
         tests/test_dvbapi.cpp
         tests/test_pmt.cpp
+        tests/test_clean_psi.cpp
         tests/test_ddci.cpp
         tests/test_dvb.cpp
         tests/test_minisatip.cpp
